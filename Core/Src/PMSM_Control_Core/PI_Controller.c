@@ -6,3 +6,6 @@
 struct PI_Id_Controller_t Id_PIstate;
 struct PI_Iq_Controller_t Iq_PIstate;
 struct PI_Speed_Controller_t Speed_PIstate;
+
+
+struct PI_FluxObserver_Speed_Controller_t FluxObserver_Speed_PIstate;

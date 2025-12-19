@@ -229,8 +229,8 @@ void Rx_ToInt32_Generate(int x)
 
 //Rx_Convert_Generate(22);
 //Rx_Add_Generate(22, 2);
-//Rx_floatMul_Generate(4, 2, 6);
-Rx_Neg_Generate(2);
+//Rx_floatMul_Generate(15, 0, 4);
+//Rx_Neg_Generate(2);
 //Rx_Add_Generate(0,5);
 //R_sinTable_Generate();
 //Rx_Sub_Generate(2,3);
@@ -239,27 +239,32 @@ Rx_Neg_Generate(2);
 //Rx_ToInt32_Generate(15);
 //Rx_floatAdd_Generate(0);
 //Rx_fxCompare_Generate(4);
-
+//Rx_fxCompare_Generate(15);
+//Rx_mul_Generate(18, 0, 15);
+//Rx_mul_Generate(10, 3, 15);
+//Rx_Convert_Generate(18);
+//Rx_Convert_Generate(10);
 
 //name:PI控制器名称，inputR:输入定点类型，outputMIN~outputMAX输出最小值和最大值，outputR:输出定点类型，P:比例增益，PR:比例增益类型
-//ITs:积分增益乘以执行周期，ITsR:积分增益类型，IAddR，积分累计项类型(AddUp的类型)
-void PI_Controller_Generate(string name,int inputR,float outputMIN,float outputMAX,int outputR,float P,int PR,float ITs,int ITsR,int IAddR)
+//ITs:积分增益乘以执行周期，ITsR:积分增益类型，IAddR:积分累计项类型(AddUp的类型)，DirectlyErr:直接输入error而不是使用error=Set-Measure计算
+void PI_Controller_Generate(string name,int inputR,float outputMIN,float outputMAX,int outputR,float P,int PR,float ITs,int ITsR,int IAddR,bool DirectlyErr=false)
 {
-    string shift = IAddR > outputR ? $">>{IAddR-inputR}" : $"<<{inputR-IAddR}";
+    string shift = IAddR > inputR ? $">>{IAddR-inputR}" : $"<<{inputR-IAddR}";
+    string comment = DirectlyErr ? "//" : "";
     string code=$$$"""
                    struct PI_{{{name}}}_Controller_t {
                        R{{{inputR}}}_t Set;//设定值
                        R{{{inputR}}}_t Measure;//实测值
-                       //error=Set-Measure
+                       R{{{inputR}}}_t error;//误差值(error=Set-Measure)
                        R{{{outputR}}}_t Output;//输出值
                        R{{{IAddR}}}_t AddUp;//积分值
                    };
                    //{{{name}}}的PI控制器，此代码为自动生成的代码，各项参数如下:
                    //比例增益P:{{{P}}},积分增益乘以时间ITs:{{{ITs}}},输出最小最大值:{{{outputMIN}}}~{{{outputMAX}}}
                    static inline void {{{name}}}_PI_update(struct PI_{{{name}}}_Controller_t* {{{name}}}){
-                        R{{{inputR}}}_t error=R{{{inputR}}}_sub({{{name}}}->Set,{{{name}}}->Measure);
+                        {{{comment}}}{{{name}}}->error=R{{{inputR}}}_sub({{{name}}}->Set,{{{name}}}->Measure);
                         R{{{outputR}}}_t output_unsat =R{{{outputR}}}_add(
-                                R{{{PR}}}_{{{inputR}}}_{{{outputR}}}_mul(R{{{PR}}}_fromFloat({{{P}}}),error) ,
+                                R{{{PR}}}_{{{inputR}}}_{{{outputR}}}_mul(R{{{PR}}}_fromFloat({{{P}}}),{{{name}}}->error) ,
                                 R{{{ITsR}}}_{{{IAddR}}}_{{{outputR}}}_mul(R{{{ITsR}}}_fromFloat({{{ITs}}}),{{{name}}}->AddUp)
                                 );
                         R{{{outputR}}}_t output;       
@@ -274,7 +279,7 @@ void PI_Controller_Generate(string name,int inputR,float outputMIN,float outputM
                         output = output_unsat;           
                         }                                
                         if (!saturated) {    
-                            {{{name}}}->AddUp.value+=error.value{{{shift}}};        
+                            {{{name}}}->AddUp.value+={{{name}}}->error.value{{{shift}}};        
                         }                                
                         {{{name}}}->Output=output;             
                    }
@@ -282,6 +287,8 @@ void PI_Controller_Generate(string name,int inputR,float outputMIN,float outputM
                    """;
     Console.WriteLine(code);
 }
+
+
 // mode=0表示使用牛顿法，mode=1表示使用位移法
 void Rx_sqrt_Generate64(int x, int mode = 0)
 {
@@ -463,7 +470,11 @@ PI_Controller_Generate("Iq",2,-6.5f,6.5f,4,10,4,0.01f*20/15,0,10);
 //Rx_mul_Generate(0, 18, 2);
 //Rx_fxCompare_Generate(8);
 PI_Controller_Generate("Speed",15,-1f,1f,2,0.0005f,0,0.0000003f*20,0,22);
+PI_Controller_Generate("FluxObserver_Speed",0,-5000f,5000f,15,200000.0f,18,100,10,8,true);
+
+Rx_mul_Generate(10, 8, 15);
+Rx_Convert_Generate(12);
 //Rx_sqrt_Generate32(8);
 //Rx_floatCompare_Generate(8);
-//Rx_floatMul_Generate(0, 4, 0);
+//Rx_floatMul_Generate(0, 10, 4);
 

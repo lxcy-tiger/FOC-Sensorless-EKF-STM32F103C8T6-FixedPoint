@@ -3,18 +3,18 @@
 //
 #include "PMSM_Control_Core/EKF.h"
 
-constexpr float Rs=5.5f/2; //电阻(Ohm)
-constexpr float Ls=2.e-3f/2; //电感(H)
-constexpr float flux=0.00386335f;//磁通(V·s)
-constexpr float T_s=1.f/15000;//采样时间(EKF执行周期)(s)
-constexpr float TsDivLs=T_s/Ls;//数值上等于T_s/Ls，用于加速计算过程
-constexpr float RsTsDivLs=Rs*TsDivLs;//数值上等于Rs*T_s/Ls，用于加速计算过程
-constexpr float fluxTsDivLs=flux*TsDivLs;//数值上等于flux*T_s/Ls，用于加速计算过程
-constexpr float Q_0_0=0.03f;constexpr float Q_1_1=0.03f;
-    constexpr float Q_2_2=100.f;constexpr float Q_3_3=0.00003f; //过程噪声方差矩阵
-constexpr float R_0_0=0.05f;constexpr float R_1_1=0.05f; //测量噪声方差矩阵
-static R2_t x_k_k_prev_0,x_k_k_prev_1;R15_t x_k_k_prev_2;R4_t x_k_k_prev_3; //先验估计
-static R2_t x_k_k_0,x_k_k_1;R15_t x_k_k_2;R4_t x_k_k_3; //后验估计
+static constexpr float Rs=5.5f/2; //电阻(Ohm)
+static constexpr float Ls=2.e-3f/2; //电感(H)
+static constexpr float flux=0.00386335f;//磁通(V·s)
+static constexpr float T_s=1.f/15000;//采样时间(EKF执行周期)(s)
+static constexpr float TsDivLs=T_s/Ls;//数值上等于T_s/Ls，用于加速计算过程
+static constexpr float RsTsDivLs=Rs*TsDivLs;//数值上等于Rs*T_s/Ls，用于加速计算过程
+static constexpr float fluxTsDivLs=flux*TsDivLs;//数值上等于flux*T_s/Ls，用于加速计算过程
+static constexpr float Q_0_0=0.03f;static constexpr float Q_1_1=0.03f;
+    static constexpr float Q_2_2=100.f;static constexpr float Q_3_3=0.00003f; //过程噪声方差矩阵
+static constexpr float R_0_0=0.05f;static constexpr float R_1_1=0.05f; //测量噪声方差矩阵
+static R2_t x_k_k_prev_0,x_k_k_prev_1;static R15_t x_k_k_prev_2;static R4_t x_k_k_prev_3; //先验估计
+static R2_t x_k_k_0,x_k_k_1;static R15_t x_k_k_2;static R4_t x_k_k_3; //后验估计
 static R0_t P_k_k_prev_0_0,P_k_k_prev_0_1;static R8_t P_k_k_prev_0_2;static R0_t P_k_k_prev_0_3;
         static R0_t P_k_k_prev_1_1;static R8_t P_k_k_prev_1_2;static R0_t P_k_k_prev_1_3;
         static R15_t P_k_k_prev_2_2;static R8_t P_k_k_prev_2_3;

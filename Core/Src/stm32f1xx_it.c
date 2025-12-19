@@ -29,6 +29,7 @@
 #include "PMSM_Control_Core/PI_Controller.h"
 #include "PMSM_Control_Core/SVPWM.h"
 #include "USB_JustFloat.h"
+#include "PMSM_Control_Core/FluxObserver_PLL.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -271,16 +272,49 @@ void ADC1_2_IRQHandler(void)
   ClarkePark.clarke.Ic_I=Ic;
   Clarke_transform(&ClarkePark.clarke);
 
-  /*
-   * 执行一次EKF,获取转子角度和速度
-   * 注意这里输入电压取上一次中断时计算的电压(事实上应当为上上次中断时计算的电压)
-   * 因为这次计算的电压，将会在下个周期作用
-   */
-  ekf_est.Ialpha_I=ClarkePark.clarke.Ialpha_O;
-  ekf_est.Ibeta_I=ClarkePark.clarke.Ibeta_O;
-  ekf_est.Valpha_I=ClarkePark.ipark.Valpha_O;
-  ekf_est.Vbeta_I=ClarkePark.ipark.Vbeta_O;
-  EKF_update(&ekf_est);
+  const int Observer=0;//0表示使用EKF,1表示使用FluxObserver-PLL
+  R15_t Espeed;
+  R4_t Etheta;
+  if (Observer==0) {
+    /*
+    * 执行一次EKF,获取转子角度和速度
+    * 注意这里输入电压取上一次中断时计算的电压,事实上应当取上上次中断时计算的电压
+    * 时刻图:
+    * 中断时刻0 周期0 中断时刻1 周期1 中断时刻2 周期2
+    * 中断时刻0计算的电压(此时已经进入周期0),将会在周期1生效
+    * 所以说我们在中断时刻2应当取作用在周期1的电压
+    * 即 中断时刻0计算的电压
+    * 但是我们的ClarkePark.ipark变量只记录了前一个周期即中断时刻1计算的电压
+    * 由于中断时刻0和中断时刻1计算的电压不会有太大的差异，所以将就一下也能用
+    */
+    ekf_est.Ialpha_I=ClarkePark.clarke.Ialpha_O;
+    ekf_est.Ibeta_I=ClarkePark.clarke.Ibeta_O;
+    ekf_est.Valpha_I=ClarkePark.ipark.Valpha_O;
+    ekf_est.Vbeta_I=ClarkePark.ipark.Vbeta_O;
+    EKF_update(&ekf_est);
+    Espeed=ekf_est.Espeed_O;
+    Etheta=ekf_est.Etheta_O;
+  }
+  else {
+    /*
+    * 执行一次FluxObserver-PLL,获取转子角度和速度
+    * 注意这里输入电压取上一次中断时计算的电压,事实上应当取上上次中断时计算的电压
+    * 时刻图:
+    * 中断时刻0 周期0 中断时刻1 周期1 中断时刻2 周期2
+    * 中断时刻0计算的电压(此时已经进入周期0),将会在周期1生效
+    * 所以说我们在中断时刻2应当取作用在周期1的电压
+    * 即 中断时刻0计算的电压
+    * 但是我们的ClarkePark.ipark变量只记录了前一个周期即中断时刻1计算的电压
+    * 由于中断时刻0和中断时刻1计算的电压不会有太大的差异，所以将就一下也能用
+    */
+    fluxObserver_pll_est.Ialpha_I=ClarkePark.clarke.Ialpha_O;
+    fluxObserver_pll_est.Ibeta_I=ClarkePark.clarke.Ibeta_O;
+    fluxObserver_pll_est.Valpha_I=ClarkePark.ipark.Valpha_O;
+    fluxObserver_pll_est.Vbeta_I=ClarkePark.ipark.Vbeta_O;
+    FluxObserver_PLL_update(&fluxObserver_pll_est);
+    Espeed=fluxObserver_pll_est.Espeed_O;
+    Etheta=fluxObserver_pll_est.Etheta_O;
+  }
 
   /*
   * 执行一次转速环，获取Q电流环给定(转速环频率已降低为1khz)
@@ -288,7 +322,7 @@ void ADC1_2_IRQHandler(void)
   static int SpeedCount=0;
   SpeedCount++;
   if (SpeedCount==15) {
-    Speed_PIstate.Measure=ekf_est.Espeed_O;
+    Speed_PIstate.Measure=Espeed;
     Speed_PI_update(&Speed_PIstate);
     SpeedCount=0;
   }
@@ -299,7 +333,7 @@ void ADC1_2_IRQHandler(void)
   */
   ClarkePark.park.Ialpha_I=ClarkePark.clarke.Ialpha_O;
   ClarkePark.park.Ibeta_I=ClarkePark.clarke.Ibeta_O;
-  ClarkePark.park.Theta_I=ekf_est.Etheta_O;
+  ClarkePark.park.Theta_I=Etheta;
   Park_transform(&ClarkePark.park);
 
   /*
@@ -317,7 +351,7 @@ void ADC1_2_IRQHandler(void)
   ClarkePark.ipark.Vd_I=Id_PIstate.Output;
   ClarkePark.ipark.Vq_I=Iq_PIstate.Output;
 
-  ClarkePark.ipark.Theta_I=ekf_est.Etheta_O;
+  ClarkePark.ipark.Theta_I=Etheta;
   IPark_transform(&ClarkePark.ipark);
 
   /*

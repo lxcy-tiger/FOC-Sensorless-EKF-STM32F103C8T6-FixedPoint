@@ -7,6 +7,7 @@
 #include "usbd_cdc_if.h"
 #include "PMSM_Control_Core/Clarke_Park.h"
 #include "PMSM_Control_Core/EKF.h"
+#include "PMSM_Control_Core/FluxObserver_PLL.h"
 #include "PMSM_Control_Core/PI_Controller.h"
 uint32_t USB_DataRecordIndex=0;//表示已经记录数据的下标
 float USB_data[USB_MaxDataRecordLength+500];//长度为USB_MaxDataRecordLength+500，留有一定裕量，防止超过数组下标(理论上不会超过)
@@ -15,7 +16,7 @@ static constexpr unsigned char tail[4]={0x00,0x00,0x80,0x7f};
 void recordRunningData() {
     USB_data[USB_DataRecordIndex++]=cvtRToFloat(ClarkePark.park.Ialpha_I);
     USB_data[USB_DataRecordIndex++]=cvtRToFloat(ClarkePark.park.Ibeta_I);
-    USB_data[USB_DataRecordIndex++]=cvtRToFloat(Speed_PIstate.Set);
+    USB_data[USB_DataRecordIndex++]=cvtRToFloat(ClarkePark.ipark.Theta_I);
     USB_data[USB_DataRecordIndex++]=cvtRToFloat(Speed_PIstate.Measure);
     //USB_data[USB_DataRecordIndex++]=cvtRToFloat(ekf_est.Etheta_O);
     USB_data[USB_DataRecordIndex++]=*((float*)&tail[0]);

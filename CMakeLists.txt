@@ -44,7 +44,9 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Inc/PMSM_Control_Core/EKF.h
         Core/Src/PMSM_Control_Core/EKF.c
         Core/Inc/USB_JustFloat.h
-        Core/Src/USB_JustFloat.c)
+        Core/Src/USB_JustFloat.c
+        Core/Src/PMSM_Control_Core/FluxObserver_PLL.c
+        Core/Inc/PMSM_Control_Core/FluxObserver_PLL.h)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)

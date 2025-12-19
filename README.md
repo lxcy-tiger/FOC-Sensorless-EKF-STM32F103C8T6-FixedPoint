@@ -1,6 +1,6 @@
 # FOC-Sensorless-EKF-STM32F103C8T6-FixedPoint
 
-无感FOC项目(全定点实现)，采用EKF观测器，MCU采用STM32F103C8T6，板子使用ST的X-NUCLEO-IHM07M1评估板，项目为Clion的CMAKE项目，可以使用Clion或VSCode打开。
+无感FOC项目(全定点实现)，采用EKF观测器或非线性磁链观测器，MCU采用STM32F103C8T6，板子使用ST的X-NUCLEO-IHM07M1评估板，项目为Clion的CMAKE项目，可以使用Clion或VSCode打开。
 
 该项目纯粹为实验用途，事实上一次定点EKF需要跑25us(可以再优化，比如把32位定点变成16位定点可以防止乘法时提升到64位，但是比较耗费时间，且精度不能保证，需要重新测定各个变量的值，非常麻烦，故没有继续优化)，加上SVPWM，转速环和电流环，电流采样，限幅，跑一次是45us，本来想跑20khz，但是非常极限，所以改为15khz了
 
@@ -17,8 +17,9 @@
 | SVPWM  | 使用Timer1,计时器频率72Mhz(未分频),计数值2400-1<br>三通道Channel1,2,3输出PWM<br>第四通道用于触发ADC采样(比较值设为1,对Center Ailgned 1而言,是计数值向上再向下减到1才触发ADC,也就是在每个PWM周期快结束时采样) |
 |  电流环   |                                                               PI控制(有抗饱和),15khz                                                               |
  |  转速环   |                                                               PI控制(有抗饱和),1khz                                                                |
- |  观测器   |                                                                  EKF(15khz)                                                                  | 
+ |  观测器   |                                           EKF(15khz)或改进的磁链观测器(15khz)<br>可在ADC1中断中更改变量Observer的值切换                                            | 
 |  EKF   |                                                       四维状态向量ialpha,ibeta,Espeed,Etheta                                                       |
+| 磁链观测器  |                     我们使用了PLL，并且参考了论文:《Performance Improvement of Nonlinear Flux Observer for Sensorless Control of PMSM》                     |
 | 与上位机通信 |                                                         USB通信，VOFA+(JustFloat协议)显示波形                                                         |
 | C语言标准  |                                                                     C23                                                                      |
  |  软件版本  |   CLion 2025.3,openocd 0.12.0,arm-gnu-toolchain 14.2,CUBEMX 6.16.0,CUBECLT 1.18.0,MATLAB R2024a,VOFA+ 1.4.5,操作系统版本:deepin V23(Linux 6.18)    |
@@ -44,7 +45,7 @@
 
 4.采样电路不同（即不使用配套的评估板而是你自己的板子），请修改PMSM_Control_Core/Hardware.c里的IA_K和IB_K参数，这里的参数表示每安电流对应ADC采样端多少伏的电压，由于上电时，会进行一次VCC_3V3，IA_REF，IB_REF离线校正，因此事实上这三个参数并不需要特意修改
 
-5.在不同的硬件上运行时，如果电机不能运行或者运行一会就停止，请调整一下PI参数，使用C#代码自动生成对应的PI控制器
+5.在不同的硬件上运行时，如果电机不能运行或者运行一会就停止，请调整一下PI参数，使用C#代码自动生成对应的PI控制器，或者微调一下PMSM_Control_Core/EKF.c里面的Q，R矩阵
 
 ## 📈 **运行以及波形查看**
 

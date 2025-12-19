@@ -540,5 +540,60 @@ static inline R0_t R8_inv(R8_t x) {
 static inline R0_t R0_f4_0_mul(R0_t x,float y) {
     return (R0_t){(int32_t)(((int64_t)x.value*((int32_t)(y*(float)(1U<<(31-4)))))>>(31+0-(0+4)))};
 }
+//定点数浮点数指定定点精度乘法，相当于x*y
+static inline R0_t R2_f0_0_mul(R2_t x,float y) {
+    return (R0_t){(int32_t)(((int64_t)x.value*((int32_t)(y*(float)(1U<<(31-0)))))>>(31+0-(2+0)))};
+}
+//定点数浮点数指定定点精度乘法，相当于x*y
+static inline R0_t R4_f0_0_mul(R4_t x,float y) {
+    return (R0_t){(int32_t)(((int64_t)x.value*((int32_t)(y*(float)(1U<<(31-0)))))>>(31+0-(4+0)))};
+}
+//定点数浮点数指定定点精度乘法，相当于x*y
+static inline R4_t R2_f2_4_mul(R2_t x,float y) {
+    return (R4_t){(int32_t)(((int64_t)x.value*((int32_t)(y*(float)(1U<<(31-2)))))>>(31+4-(2+2)))};
+}
+//定点数浮点数指定定点精度乘法，相当于x*y
+static inline R4_t R0_f10_4_mul(R0_t x,float y) {
+    return (R4_t){(int32_t)(((int64_t)x.value*((int32_t)(y*(float)(1U<<(31-10)))))>>(31+4-(0+10)))};
+}
+//定点数判断小于，相当于x<y
+static inline int32_t R15_less(R15_t x,R15_t y) {
+    return x.value<y.value;
+}
+//定点数判断大于，相当于x>y
+static inline int32_t R15_greater(R15_t x,R15_t y) {
+    return x.value>y.value;
+}
+//定点数乘法，相当于x*y
+static inline R15_t R18_0_15_mul(R18_t x,R0_t y) {
+    return (R15_t){(int32_t)(((int64_t)x.value*y.value)>>(31+15-(18+0)))};
+}
+//定点数乘法，相当于x*y
+static inline R15_t R10_3_15_mul(R10_t x,R3_t y) {
+    return (R15_t){(int32_t)(((int64_t)x.value*y.value)>>(31+15-(10+3)))};
+}
+// 专用于R18的转换宏
+# define R18_fromFloat(x) ((R18_t){ (x) *(1U<<(31-18)) })
+// 专用于R10的转换宏
+# define R10_fromFloat(x) ((R10_t){ (x) *(1U<<(31-10)) })
+//定点数浮点数指定定点精度乘法，相当于x*y
+static inline R4_t R15_f0_4_mul(R15_t x,float y) {
+    return (R4_t){(int32_t)(((int64_t)x.value*((int32_t)(y*(float)(1U<<(31-0)))))>>(31+4-(15+0)))};
+}
+//定点数乘法，相当于x*y
+static inline R15_t R12_5_15_mul(R12_t x,R5_t y) {
+    return (R15_t){(int32_t)(((int64_t)x.value*y.value)>>(31+15-(12+5)))};
+}
+// 专用于R12的转换宏
+# define R12_fromFloat(x) ((R12_t){ (x) *(1U<<(31-12)) })
+
+//定点数乘法，相当于x*y
+static inline R15_t R10_5_15_mul(R10_t x,R5_t y) {
+    return (R15_t){(int32_t)(((int64_t)x.value*y.value)>>(31+15-(10+5)))};
+}
+//定点数乘法，相当于x*y
+static inline R15_t R10_8_15_mul(R10_t x,R8_t y) {
+    return (R15_t){(int32_t)(((int64_t)x.value*y.value)>>(31+15-(10+8)))};
+}
 
 #endif //FOC_SENSORLESS_FIXED_FIX_POINT_H
