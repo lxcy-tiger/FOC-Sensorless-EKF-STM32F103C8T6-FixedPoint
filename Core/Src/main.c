@@ -6,7 +6,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2025 STMicroelectronics.
+  * Copyright (c) 2026 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -26,14 +26,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "PMSM_Control_Core/Clarke_Park.h"
-#include "PMSM_Control_Core/EKF.h"
-#include "PMSM_Control_Core/SVPWM.h"
-#include "fixed_point.h"
-#include "stm32f1xx_it.h"
-#include "USB_JustFloat.h"
+#include "PMSM_Control_Core/FluxObserver_PLL.h"
 #include "PMSM_Control_Core/Hardware.h"
 #include "PMSM_Control_Core/PI_Controller.h"
+#include "PMSM_Control_Core/SVPWM.h"
+#include "PMSM_Control_Core/User_Parameters.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -65,7 +62,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-volatile uint32_t timerFlag=0;
+
 /* USER CODE END 0 */
 
 /**
@@ -102,26 +99,24 @@ int main(void)
   MX_TIM1_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
-
+  FluxObserver_init();
   //ADC单端输入校准
   __HAL_RCC_ADC1_CLK_ENABLE();
   if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK)Error_Handler();
   //离线Ia,Ib,Vcc偏置ADC值校正
   Offline_IabVcc_Adjust();
   //给定D轴电流为0(事实上自动初始化为0，不需要人为给定)
-  Id_PIstate.Set=R2_fromFloat(0);
-
-
+  Id_PIstate.Set=Q15_FromValue(0,I);
   // 启动 TIM1 计数器
   HAL_TIM_Base_Start(&htim1);
-  //HAL_TIM_Base_Start_IT(&htim1);
   //开启定时器,开启通道输出
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
   //PWM第四通道只用于触发ADC
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-  TIM1_Set_PWMCompare(2000,700,1000);
+  //设定一个输出为0矢量的占空比
+  TIM1_Set_PWMCompare(1200,1200,1200);
 
   // 启动ADC注入通道
   HAL_ADCEx_InjectedStart_IT(&hadc1);
@@ -130,8 +125,8 @@ int main(void)
   HAL_GPIO_WritePin(EN1_GPIO_Port,EN1_Pin,GPIO_PIN_SET);
   HAL_GPIO_WritePin(EN2_GPIO_Port,EN2_Pin,GPIO_PIN_SET);
   HAL_GPIO_WritePin(EN3_GPIO_Port,EN3_Pin,GPIO_PIN_SET);
-  Speed_PIstate.Set=R15_fromFloat(1000);
-
+  //给定初始电转速1000rad/s
+  Speed_PIstate.Set=Q15_FromValue(700,we);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -141,10 +136,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if (TimeMeasure)
-      if (timerFlag>USB_HalfDataCount) {
-        HAL_Delay(1000);
-      }
   }
   /* USER CODE END 3 */
 }

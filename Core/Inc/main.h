@@ -7,7 +7,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2025 STMicroelectronics.
+  * Copyright (c) 2026 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -65,7 +65,7 @@ void Error_Handler(void);
 #define EN3_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-static constexpr int TimeMeasure=0;//设为1，并且在mian函数里打上 HAL_Delay(1000);的断点，查看timerFlag的值可测量该函数运行一次最长需要的时间
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

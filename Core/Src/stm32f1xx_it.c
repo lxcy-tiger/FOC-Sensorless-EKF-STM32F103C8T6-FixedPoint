@@ -6,7 +6,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2025 STMicroelectronics.
+  * Copyright (c) 2026 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -20,16 +20,18 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f1xx_it.h"
+
+
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "fixed_point.h"
-#include "PMSM_Control_Core/Hardware.h"
+#include "USB_JustFloat.h"
 #include "PMSM_Control_Core/Clarke_Park.h"
-#include "PMSM_Control_Core/EKF.h"
+#include "PMSM_Control_Core/FluxObserver_PLL.h"
+#include "PMSM_Control_Core/Hardware.h"
 #include "PMSM_Control_Core/PI_Controller.h"
 #include "PMSM_Control_Core/SVPWM.h"
-#include "USB_JustFloat.h"
-#include "PMSM_Control_Core/FluxObserver_PLL.h"
+#include "PMSM_Control_Core/User_Parameters.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -39,6 +41,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -220,7 +223,7 @@ void DMA1_Channel1_IRQHandler(void)
 
   /* USER CODE END DMA1_Channel1_IRQn 1 */
 }
-
+volatile uint32_t tim1_cnt;
 /**
   * @brief This function handles ADC1 and ADC2 global interrupts.
   */
@@ -231,39 +234,17 @@ void ADC1_2_IRQHandler(void)
   /* USER CODE END ADC1_2_IRQn 0 */
   HAL_ADC_IRQHandler(&hadc1);
   /* USER CODE BEGIN ADC1_2_IRQn 1 */
-  extern volatile uint32_t timerFlag;
-  if (TimeMeasure) {
-    if (timerFlag<USB_HalfDataCount) {
-      timerFlag++;
-    }
-    if (timerFlag==USB_HalfDataCount) {
-      CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-      DWT->CYCCNT = 0;
-      DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-    }
-    if (USB_HalfDataCount%15!=0) {
-      //额外执行一次转速环，以更准确计算全部代码消耗的时间
-      Speed_PIstate.Measure=ekf_est.Espeed_O;
-      Speed_PI_update(&Speed_PIstate);
-    }
-  }
-  //上述代码仅用于测试该函数执行一次的时间
-  /*
-  性能测试：执行时间:3277周期，合45.5us
-  */
-
   /*
    *获取ABC相电流
    */
   const int32_t va_source=(int32_t)HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
   const int32_t vb_source=(int32_t)HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
-  const R15_t va_source_R=(R15_t){va_source<<(31-15)};
-  const R15_t vb_source_R=(R15_t){vb_source<<(31-15)};
-  const R2_t Ia_raw=R15_0_2_mul(R15_sub(IA_REF_R,va_source_R),IA_K_4095_inv_VCC_3V3);
-  const R2_t Ib_raw=R15_0_2_mul(R15_sub(IB_REF_R,vb_source_R),IB_K_4095_inv_VCC_3V3);
-  const R2_t Ia=median_filter_Ia_5(Ia_raw);
-  const R2_t Ib=median_filter_Ib_5(Ib_raw);
-  const R2_t Ic=R2_neg(R2_add(Ia,Ib));
+  extern int16_t IA_REF;extern int16_t IB_REF;
+  const Q15_I_t Ia_raw=ADC_GetCurrent_Q15(va_source,IA_REF);
+  const Q15_I_t Ib_raw=ADC_GetCurrent_Q15(vb_source,IB_REF);
+  const Q15_I_t Ia=lowPass_filter_Ia(Ia_raw);
+  const Q15_I_t Ib=lowPass_filter_Ib(Ib_raw);
+  const Q15_I_t Ic=Q15_C2C(Q15_add(_NP(Ia),_NP(Ib)),I);
   /*
   * 执行一次Clarke，获取静止三相电流
   */
@@ -272,50 +253,15 @@ void ADC1_2_IRQHandler(void)
   ClarkePark.clarke.Ic_I=Ic;
   Clarke_transform(&ClarkePark.clarke);
 
-  const int Observer=0;//0表示使用EKF,1表示使用FluxObserver-PLL
-  R15_t Espeed;
-  R4_t Etheta;
-  if (Observer==0) {
-    /*
-    * 执行一次EKF,获取转子角度和速度
-    * 注意这里输入电压取上一次中断时计算的电压,事实上应当取上上次中断时计算的电压
-    * 时刻图:
-    * 中断时刻0 周期0 中断时刻1 周期1 中断时刻2 周期2
-    * 中断时刻0计算的电压(此时已经进入周期0),将会在周期1生效
-    * 所以说我们在中断时刻2应当取作用在周期1的电压
-    * 即 中断时刻0计算的电压
-    * 但是我们的ClarkePark.ipark变量只记录了前一个周期即中断时刻1计算的电压
-    * 由于中断时刻0和中断时刻1计算的电压不会有太大的差异，所以将就一下也能用
-    */
-    ekf_est.Ialpha_I=ClarkePark.clarke.Ialpha_O;
-    ekf_est.Ibeta_I=ClarkePark.clarke.Ibeta_O;
-    ekf_est.Valpha_I=ClarkePark.ipark.Valpha_O;
-    ekf_est.Vbeta_I=ClarkePark.ipark.Vbeta_O;
-    EKF_update(&ekf_est);
-    Espeed=ekf_est.Espeed_O;
-    Etheta=ekf_est.Etheta_O;
-  }
-  else {
-    /*
-    * 执行一次FluxObserver-PLL,获取转子角度和速度
-    * 注意这里输入电压取上一次中断时计算的电压,事实上应当取上上次中断时计算的电压
-    * 时刻图:
-    * 中断时刻0 周期0 中断时刻1 周期1 中断时刻2 周期2
-    * 中断时刻0计算的电压(此时已经进入周期0),将会在周期1生效
-    * 所以说我们在中断时刻2应当取作用在周期1的电压
-    * 即 中断时刻0计算的电压
-    * 但是我们的ClarkePark.ipark变量只记录了前一个周期即中断时刻1计算的电压
-    * 由于中断时刻0和中断时刻1计算的电压不会有太大的差异，所以将就一下也能用
-    */
-    fluxObserver_pll_est.Ialpha_I=ClarkePark.clarke.Ialpha_O;
-    fluxObserver_pll_est.Ibeta_I=ClarkePark.clarke.Ibeta_O;
-    fluxObserver_pll_est.Valpha_I=ClarkePark.ipark.Valpha_O;
-    fluxObserver_pll_est.Vbeta_I=ClarkePark.ipark.Vbeta_O;
-    FluxObserver_PLL_update(&fluxObserver_pll_est);
-    Espeed=fluxObserver_pll_est.Espeed_O;
-    Etheta=fluxObserver_pll_est.Etheta_O;
-  }
-
+  Q15_we_t Espeed;
+  Q15_te_t Etheta;
+  fluxObserver_pll_est.Ialpha_I=ClarkePark.clarke.Ialpha_O;
+  fluxObserver_pll_est.Ibeta_I=ClarkePark.clarke.Ibeta_O;
+  fluxObserver_pll_est.Valpha_I=ClarkePark.ipark.Valpha_O;
+  fluxObserver_pll_est.Vbeta_I=ClarkePark.ipark.Vbeta_O;
+  FluxObserver_PLL_update(&fluxObserver_pll_est);
+  Espeed=fluxObserver_pll_est.Espeed_O;
+  Etheta=fluxObserver_pll_est.Etheta_O;
   /*
   * 执行一次转速环，获取Q电流环给定(转速环频率已降低为1khz)
   */
@@ -326,8 +272,6 @@ void ADC1_2_IRQHandler(void)
     Speed_PI_update(&Speed_PIstate);
     SpeedCount=0;
   }
-
-
   /*
   * 执行一次Park，获取dq电流
   */
@@ -350,34 +294,26 @@ void ADC1_2_IRQHandler(void)
    */
   ClarkePark.ipark.Vd_I=Id_PIstate.Output;
   ClarkePark.ipark.Vq_I=Iq_PIstate.Output;
-
   ClarkePark.ipark.Theta_I=Etheta;
   IPark_transform(&ClarkePark.ipark);
 
   /*
   * 对计算所得的矢量进行限幅(6.5V)
   */
-  const R8_t modulus_sq=R8_add(R4_4_8_mul(ClarkePark.ipark.Valpha_O,ClarkePark.ipark.Valpha_O)
-     ,R4_4_8_mul(ClarkePark.ipark.Vbeta_O,ClarkePark.ipark.Vbeta_O));
-  const R8_t modulus=R8_sqrt(modulus_sq);
-  const R0_t modulus_inv=R8_inv(modulus);
-  const R0_t gain=R0_f4_0_mul(modulus_inv,6.5f);
-  if (R8_float_greater(modulus,6.5f)) {
-    ClarkePark.ipark.Valpha_O=R4_0_4_mul(ClarkePark.ipark.Valpha_O,gain);
-    ClarkePark.ipark.Vbeta_O=R4_0_4_mul(ClarkePark.ipark.Vbeta_O,gain);
-  }
-  /*
-  * 执行一次SVPWM，更新计数值
-  */
-  SVPWM_Calculate_Set(ClarkePark.ipark.Valpha_O,ClarkePark.ipark.Vbeta_O);
+  const Q15_U_t V_modulus=Q15_C2C(Q15_module(_P(ClarkePark.ipark.Valpha_O),_P(ClarkePark.ipark.Vbeta_O)),U);
 
-  recordRunningData();
-  if (TimeMeasure) {
-    if (timerFlag==USB_HalfDataCount) {
-      timerFlag=DWT->CYCCNT;
-    }
-    //上述代码仅用于测试该函数执行一次的时间
+  if (V_modulus.child_value>Q15_FromValue(6.5,U).child_value) {
+     ClarkePark.ipark.Valpha_O=(Q15_U_t){(int32_t)ClarkePark.ipark.Valpha_O.child_value*Q15_FromValue(6.5,U).child_value/V_modulus.child_value};
+     ClarkePark.ipark.Vbeta_O=(Q15_U_t){(int32_t)ClarkePark.ipark.Vbeta_O.child_value*Q15_FromValue(6.5,U).child_value/V_modulus.child_value};
   }
+
+  /*
+   * 执行一次SVPWM，更新计数值
+   */
+  SVPWM_Calculate_Set(ClarkePark.ipark.Valpha_O,ClarkePark.ipark.Vbeta_O);
+  tim1_cnt=TIM1->CNT;
+  //记录数据
+  recordRunningData();
   /* USER CODE END ADC1_2_IRQn 1 */
 }
 
