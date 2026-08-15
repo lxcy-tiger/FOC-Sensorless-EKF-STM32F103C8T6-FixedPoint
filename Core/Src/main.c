@@ -126,7 +126,7 @@ int main(void)
   HAL_GPIO_WritePin(EN2_GPIO_Port,EN2_Pin,GPIO_PIN_SET);
   HAL_GPIO_WritePin(EN3_GPIO_Port,EN3_Pin,GPIO_PIN_SET);
   //给定初始电转速1000rad/s
-  Speed_PIstate.Set=Q15_FromValue(700,we);
+  Speed_PIstate.Set=Q15_FromValue(500,we);
   /* USER CODE END 2 */
 
   /* Infinite loop */

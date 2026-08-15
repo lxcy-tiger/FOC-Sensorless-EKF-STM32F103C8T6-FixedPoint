@@ -17,8 +17,10 @@ static inline uint32_t clamp_u32(uint32_t input,uint32_t min,uint32_t max) {
     if (input > max)return max;
     return input;
 }
+//计算角度的正余弦值
 void Q15_sin_cos(Q15_te_t theta,Q15_t *sinTheta,Q15_t *cosTheta);
-
+//具有两个输入的反正切函数
+Q15_te_t Q15_atan2(int16_t y, int16_t x);
 //自动生成函数(简单的一阶低通滤波器,参数NAME:函数名称,f_c截止频率(hz),Q_type定点类型)
 #define GenerateFunction_LowPassFilter(NAME,f_c,Q_type) \
     static Q15_##Q_type##_t lowPass_filter_##NAME(Q15_##Q_type##_t NAME##_input){\

@@ -11,7 +11,7 @@ static const float Udc=12.f;//电机额定电压(V)
 static const float I_max=1.0f;//电机最大电流(A)
 static const float we_max=1800.f;//电机额定电角速度(rad/s)
 
-Q15_baseValue(U,Udc*1.1f);//电压基值(V)，通常取电机额定电压除以根号三(但是在SVPWM中计算有溢出，故选择为额定电压)
+Q15_baseValue(U,Udc/1.732f*1.4f);//电压基值(V)，通常取电机额定电压除以根号三(但是在SVPWM中计算有溢出，故选择为额定电压)
 Q15_baseValue(I,I_max*1.2f);//电流基值(A)，通常取电机最大电流，这里留有一定裕量
 Q15_baseValue(Z,U_q15base.base_value/I_q15base.base_value);//阻抗基值(Ω)，通常取电压基值除以电流基值
 Q15_baseValue(we,we_max*1.1f);//电角速度基值(rad/s)，通常取电机最大电角速度，这里留有一点裕量
@@ -30,5 +30,13 @@ static const float J=4.5e-6f;//机械转动惯量(kg·m^2),暂时不用,保持fl
 static const Q15_T_t T_s=Q15_FromValue(1.f/15000,T);//观测器执行周期、控制周期(s)
 static const Q15_T_t T_s_rad=Q15_FromValue(2*M_PI/15000,T);//观测器执行周期、控制周期(s)
 static const uint8_t POLE_PAIRS=7; //极对数
+
+static const float Current_wc=12566;//电流环截止频率(rad/s)
+static const float Current_MaxOutput=Udc/M_SQRT3*0.90;//电流环最大输出值(V),双电阻采样时,达不到电压极限圆,需要留有一定裕量以留出电流采样窗口
+static const float Speed_wc=70;//转速环截止频率(rad/s)
+static const float Speed_MaxOutput=I_max;//转速环最大输出值(A)
+static const float FluxPLL_wc=80;//磁链观测器锁相环截止频率(rad/s)
+static const float FluxPLL_MaxOutput=we_max;//磁链观测器锁相环输出最大值(rad/s)
+
 
 #endif //FOC_SENSORLESS_FIXED_USER_PARAMETERS_H

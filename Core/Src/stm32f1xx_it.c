@@ -223,7 +223,6 @@ void DMA1_Channel1_IRQHandler(void)
 
   /* USER CODE END DMA1_Channel1_IRQn 1 */
 }
-volatile uint32_t tim1_cnt;
 /**
   * @brief This function handles ADC1 and ADC2 global interrupts.
   */
@@ -255,10 +254,13 @@ void ADC1_2_IRQHandler(void)
 
   Q15_we_t Espeed;
   Q15_te_t Etheta;
+
+  static Q15_U_t Valpha_last={0};
+  static Q15_U_t Vbeta_last={0};
   fluxObserver_pll_est.Ialpha_I=ClarkePark.clarke.Ialpha_O;
   fluxObserver_pll_est.Ibeta_I=ClarkePark.clarke.Ibeta_O;
-  fluxObserver_pll_est.Valpha_I=ClarkePark.ipark.Valpha_O;
-  fluxObserver_pll_est.Vbeta_I=ClarkePark.ipark.Vbeta_O;
+  fluxObserver_pll_est.Valpha_I=Valpha_last;
+  fluxObserver_pll_est.Vbeta_I=Vbeta_last;
   FluxObserver_PLL_update(&fluxObserver_pll_est);
   Espeed=fluxObserver_pll_est.Espeed_O;
   Etheta=fluxObserver_pll_est.Etheta_O;
@@ -267,7 +269,7 @@ void ADC1_2_IRQHandler(void)
   */
   static int SpeedCount=0;
   SpeedCount++;
-  if (SpeedCount==15) {
+  if (SpeedCount==10) {
     Speed_PIstate.Measure=Espeed;
     Speed_PI_update(&Speed_PIstate);
     SpeedCount=0;
@@ -288,7 +290,11 @@ void ADC1_2_IRQHandler(void)
   Iq_PIstate.Set=Speed_PIstate.Output;
   Iq_PIstate.Measure=ClarkePark.park.Iq_O;
   Iq_PI_update(&Iq_PIstate);
-
+   /*
+   * 执行反park前，将上次设置的Ualpha和Ubeta记录下来，用于下一次中断时的观测器预测
+   */
+   Valpha_last=ClarkePark.ipark.Valpha_O;
+   Vbeta_last=ClarkePark.ipark.Vbeta_O;
   /*
    * 执行一次反park，获取Ualpha和Ubeta
    */
@@ -298,20 +304,19 @@ void ADC1_2_IRQHandler(void)
   IPark_transform(&ClarkePark.ipark);
 
   /*
-  * 对计算所得的矢量进行限幅(6.5V)
+  * 对计算所得的矢量进行限幅(限制为电流环最大输出值)
   */
   const Q15_U_t V_modulus=Q15_C2C(Q15_module(_P(ClarkePark.ipark.Valpha_O),_P(ClarkePark.ipark.Vbeta_O)),U);
 
-  if (V_modulus.child_value>Q15_FromValue(6.5,U).child_value) {
-     ClarkePark.ipark.Valpha_O=(Q15_U_t){(int32_t)ClarkePark.ipark.Valpha_O.child_value*Q15_FromValue(6.5,U).child_value/V_modulus.child_value};
-     ClarkePark.ipark.Vbeta_O=(Q15_U_t){(int32_t)ClarkePark.ipark.Vbeta_O.child_value*Q15_FromValue(6.5,U).child_value/V_modulus.child_value};
+  if (V_modulus.child_value>Q15_FromValue(Current_MaxOutput,U).child_value) {
+     ClarkePark.ipark.Valpha_O=(Q15_U_t){(int32_t)ClarkePark.ipark.Valpha_O.child_value*Q15_FromValue(Current_MaxOutput,U).child_value/V_modulus.child_value};
+     ClarkePark.ipark.Vbeta_O=(Q15_U_t){(int32_t)ClarkePark.ipark.Vbeta_O.child_value*Q15_FromValue(Current_MaxOutput,U).child_value/V_modulus.child_value};
   }
 
   /*
    * 执行一次SVPWM，更新计数值
    */
   SVPWM_Calculate_Set(ClarkePark.ipark.Valpha_O,ClarkePark.ipark.Vbeta_O);
-  tim1_cnt=TIM1->CNT;
   //记录数据
   recordRunningData();
   /* USER CODE END ADC1_2_IRQn 1 */

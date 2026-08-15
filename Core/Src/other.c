@@ -3,6 +3,18 @@
 //
 #include "other.h"
 #include "PMSM_Control_Core/User_Parameters.h"
+
+/*
+            MATH_CALCULATE_LEVEL用于切换[sin_cos函数]与[atan2函数]的速度和精度平衡性
+    MATH_CALCULATE_LEVEL不同值                                     0               1            2
+速度(实测72Mhz时钟CNT差值)                                        [85][NULL]  [353][357]       [351][361]
+精度(遍历所有输入,输出int16_t的值与math浮点计算的准确值的误差)           [+-51]      [+-20][+-6]     [+-15][+-4]
+    FLASH增加量(-O2,Byte)                                       [+1976]       [+0]             [+12]
+
+ */
+#define MATH_CALCULATE_LEVEL 2
+
+#if MATH_CALCULATE_LEVEL==0
 //正弦查表
 static const int16_t sinTable[1024] = {
     0, 50, 100, 150, 201, 251, 301, 351, 402, 452, 502, 552, 603, 653, 703, 753, 804, 854, 904, 954, 1005, 1055, 1105,
@@ -67,9 +79,9 @@ static const int16_t sinTable[1024] = {
     32693, 32696, 32700, 32703, 32706, 32709, 32712, 32715, 32718, 32720, 32723, 32726, 32728, 32730, 32733, 32735,
     32737, 32739, 32741, 32743, 32745, 32747, 32749, 32750, 32752, 32754, 32755, 32756, 32758, 32759, 32760, 32761,
     32762, 32763, 32764, 32764, 32765, 32766, 32766, 32767, 32767, 32767, 32767, 32767
-};//注:此表的数值不应出现32768的数值
+}; //注:此表的数值不应出现32768的数值
 
-void Q15_sin_cos(Q15_te_t theta,Q15_t *sinTheta,Q15_t *cosTheta) {
+void Q15_sin_cos(Q15_te_t theta, Q15_t *sinTheta, Q15_t *cosTheta) {
     /*
      *由于theta的[-32768,32768)对应[-PI,PI)，而sinTable[16384/16=1024]记录了[0,PI/2)的sin数据
      *因此我们需要使用诱导公式将角度变换到0~PI/2
@@ -79,23 +91,154 @@ void Q15_sin_cos(Q15_te_t theta,Q15_t *sinTheta,Q15_t *cosTheta) {
      *[16384,32768)对应[PI/2,PI) sin(theta)=sin(PI-theta),cos(theta)=-sin(theta-PI/2)
      */
     //以下全部使用int32进行运算，防止溢出问题，另外由于定义域的开闭问题，需要额外+-1才能让它在[0,1023]范围不溢出
-    const int32_t tc=theta.child_value;
-    const int32_t PI_Q15=32768;
-    const int32_t PIdiv2_Q15=32768/2;
-    if (tc<-16384) {
-        sinTheta->parent_value=-sinTable[(tc+PI_Q15)/16];//[-32768,-16384)+32768=[0,16384)  /16=[0,1024)
-        cosTheta->parent_value=-sinTable[(-tc-PIdiv2_Q15-1)/16];//-[-32768,-16384)-16384-1=(0,16384]-1=[0,16384)  /16=[0,1024)
-    }
-    else if (tc<0) {
-        sinTheta->parent_value=-sinTable[(-tc-1)/16];//-[-16384,0)-1=[0,16384)  /16=[0,1024)
-        cosTheta->parent_value=sinTable[(PIdiv2_Q15+tc)/16];//[-16384,0)+16384=[0,16384)  /16=[0,1024)
-    }
-    else if (tc<16384) {
-        sinTheta->parent_value=sinTable[tc/16];//[0,16384)/16=[0,1024)
-        cosTheta->parent_value=sinTable[(PIdiv2_Q15-tc-1)/16];//-[0,16384)+16384-1=[0,16384) /16=[0,1024)
-    }
-    else {
-        sinTheta->parent_value=sinTable[(PI_Q15-tc-1)/16];//-[16384,32768)+32768-1=[0,16384) /16=[0,1024)
-        cosTheta->parent_value=-sinTable[(tc-PIdiv2_Q15)/16];//[16384,32768)-16384=[0,16384) /16=[0,1024)
+    const int32_t tc = theta.child_value;
+    const int32_t PI_Q15 = 32768;
+    const int32_t PIdiv2_Q15 = 32768 / 2;
+    if (tc < -16384) {
+        sinTheta->parent_value = -sinTable[(tc + PI_Q15) / 16]; //[-32768,-16384)+32768=[0,16384)  /16=[0,1024)
+        cosTheta->parent_value = -sinTable[(-tc - PIdiv2_Q15 - 1) / 16];
+        //-[-32768,-16384)-16384-1=(0,16384]-1=[0,16384)  /16=[0,1024)
+    } else if (tc < 0) {
+        sinTheta->parent_value = -sinTable[(-tc - 1) / 16]; //-[-16384,0)-1=[0,16384)  /16=[0,1024)
+        cosTheta->parent_value = sinTable[(PIdiv2_Q15 + tc) / 16]; //[-16384,0)+16384=[0,16384)  /16=[0,1024)
+    } else if (tc < 16384) {
+        sinTheta->parent_value = sinTable[tc / 16]; //[0,16384)/16=[0,1024)
+        cosTheta->parent_value = sinTable[(PIdiv2_Q15 - tc - 1) / 16]; //-[0,16384)+16384-1=[0,16384) /16=[0,1024)
+    } else {
+        sinTheta->parent_value = sinTable[(PI_Q15 - tc - 1) / 16]; //-[16384,32768)+32768-1=[0,16384) /16=[0,1024)
+        cosTheta->parent_value = -sinTable[(tc - PIdiv2_Q15) / 16]; //[16384,32768)-16384=[0,16384) /16=[0,1024)
     }
 }
+#elif MATH_CALCULATE_LEVEL==1||MATH_CALCULATE_LEVEL==2
+//cos与sin表，下标i分别表示 cos(90°/2^(i+1))*32767,sin(90°/2^(i+1))*32767
+//下面两个表均为四舍五入的结果，为确保在任何输入下都不会溢出
+static const uint16_t cos_90div2i[14] = {
+    23170, 30273, 32137, 32609, 32728, 32757, 32765, 32766, 32767, 32767, 32767, 32767, 32767, 32767
+};
+static const uint16_t sin_90div2i[14] = {23170, 12539, 6393, 3212, 1608, 804, 402, 201, 101, 50, 25, 13, 6, 3};
+
+void Q15_sin_cos(Q15_te_t theta, Q15_t *sinTheta, Q15_t *cosTheta) {
+    //本函数使用Python进行了全部验证，验证了theta在-32768~32767的输入下均能得到准确结果，误差在+-20的int16_t值
+    /*
+       theta值：
+           0 bit 0000 0000 0000 0000 ~ 16383  bit 0011 1111 1111 1111 对应 [0,PI/2)
+       16384 bit 0100 0000 0000 0000 ~ 32767  bit 0111 1111 1111 1111 对应 [PI/2,PI)
+      -16384 bit 1100 0000 0000 0000 ~    -1  bit 1111 1111 1111 1111 对应 [-PI/2,0)
+      -32768 bit 1000 0000 0000 0000 ~ -16383 bit 1011 1111 1111 1111 对应 [-PI,-PI/2)
+      依照theta的高两位，可以确定四象限，设定起始向量坐标x=cos(0,90,180,270),y=sin(0,90,180,270)
+    */
+    int32_t x = (int32_t[]){32767, 0, -32767, 0}[(uint16_t) theta.child_value >> 14];
+    int32_t y = (int32_t[]){0, 32767, 0, -32767}[(uint16_t) theta.child_value >> 14];
+
+    /*
+      根据诱导公式,cos(a+b)=cosa*cosb-sina*sinb,sin(a+b)=sinacosb+cosasinb
+      我们可以知道,在第一象限,cos(theta)=cos(
+       (bit_13*2^13+bit_12*2^12+...+bit1*2^1+bit0*2^0)
+        *2^(-14)*PI/2
+      )
+      于是可以调用14次诱导公式,从cos(0)开始:
+      if(bit_13==1)
+      {
+        cos(0+bit_13*2^13*2^(-14)*PI/2)=cos(0)cos(2^13*2^(-14)*PI/2)-sin(0)sin(2^13*2^(-14)*PI/2)
+        sin(0+bit_13*2^13*2^(-14)*PI/2)=sin(0)cos(2^13*2^(-14)*PI/2)+cos(0)sin(2^13*2^(-14)*PI/2)
+      }
+      else{
+        //啥也不干
+        cos(0+bit_13*2^13*2^(-14)*PI/2)=cos(0)
+        sin(0+bit_13*2^13*2^(-14)*PI/2)=sin(0)
+      }
+      上次的计算结果，再接着计算
+      cos(bit_13*2^13*2^(-14)*PI/2+bit_14*2^13*2^(-14)*PI/2)
+      迭代14次即可得到准确结果。
+
+      对于不同象限，只需要把起始向量改成x=cos(0,90,180,270)之类的即可,它依然是逆时针旋转，+++++加了14个角度之后得到theta的三角函数值
+    */
+    for (int i = 0; i < 14; i++) {
+        if (theta.child_value & (1 << (13 - i))) {
+            int32_t new_x = x * cos_90div2i[i] - y * sin_90div2i[i];
+            int32_t new_y = x * sin_90div2i[i] + y * cos_90div2i[i];
+            if (MATH_CALCULATE_LEVEL == 1) {
+                x = new_x >> 15;
+                y = new_y >> 15;
+            }
+            if (MATH_CALCULATE_LEVEL == 2) {
+                x = (new_x + (1 << 14)) >> 15;
+                y = (new_y + (1 << 14)) >> 15;
+            }
+        }
+    }
+    cosTheta->parent_value = x;
+    sinTheta->parent_value = y;
+}
+
+Q15_te_t Q15_atan2(int16_t y, int16_t x) {
+    //本函数使用C语言进行了全部验证，验证了[y,x]在[-32768~32767]*[-32768,32767]的输入下均能得到准确结果，误差在+-6的int16_t值
+    //处理特殊输入
+    if (y == 0) {
+        if (x >= 0)return (Q15_te_t){0};
+        return (Q15_te_t){-32768};
+    }
+    if (x==0) {
+        if (y > 0)return (Q15_te_t){16384};
+        return (Q15_te_t){-16384};
+    }
+    /*
+        theta值：
+         0 bit 0000 0000 0000 0000 ~ 16383  bit 0011 1111 1111 1111 对应 [0,PI/2)
+     16384 bit 0100 0000 0000 0000 ~ 32767  bit 0111 1111 1111 1111 对应 [PI/2,PI)
+    -16384 bit 1100 0000 0000 0000 ~    -1  bit 1111 1111 1111 1111 对应 [-PI/2,0)
+    -32768 bit 1000 0000 0000 0000 ~ -16383 bit 1011 1111 1111 1111 对应 [-PI,-PI/2)
+    依照x,y的符号，可以确定theta落在四象限中的哪一个，从而确定theta的高两位值
+    */
+    int32_t yIsUnderZero = y < 0;
+    int32_t xyIsUnderZero = (x<0) ^ yIsUnderZero;
+    int16_t theta = (yIsUnderZero << 15) | (xyIsUnderZero << 14);
+    //将输入矢量全部变成第一象限的
+    int32_t tempx = x < 0 ? -x : x;
+    int32_t tempy = y < 0 ? -y : y;
+    //小输入的时候，容易因为精度丢失而出现较大误差，这里统一缩放到允许的最大值
+    //(注:当有-32768输入时,rightCount可能等于16,从而得到错误结论,因此这里限制了rightCount最大为15)
+
+    /*
+        int rightCount=0;
+        for (int xRight=tempx,yRight=tempy; rightCount<15 &&(xRight!=0||yRight!=0);yRight>>=1,xRight>>=1,rightCount++);
+        tempx<<=15-rightCount;
+        tempy<<=15-rightCount;
+    */
+    //上述被注释掉的for，改成__builtin_clz更快
+    int clz= __builtin_clz(tempx>tempy?(uint32_t)tempx:(uint32_t)tempy);
+    if (clz<=17)clz=17;
+    tempx<<=clz-17;
+    tempy<<=clz-17;
+
+    //将输入矢量(第一象限)不停顺时针旋转直到刚刚好到达第四象限，则theta即为输入矢量与x轴夹角
+    for (int i = 0; i < 14; i++) {
+        int32_t new_x = tempx * cos_90div2i[i] + tempy * sin_90div2i[i];
+        int32_t new_y = tempy * cos_90div2i[i] - tempx * sin_90div2i[i];
+        if (new_y >= 0) {
+            theta |= 1 << (13 - i);
+            if (MATH_CALCULATE_LEVEL == 1) {
+                tempx = new_x >> 15;
+                tempy = new_y >> 15;
+            }
+            if (MATH_CALCULATE_LEVEL == 2) {
+                tempx = (new_x + (1 << 14)) >> 15;
+                tempy = (new_y + (1 << 14)) >> 15;
+            }
+        }
+    }
+    /*
+      上述结果都是将x和y取绝对值，变到第一象限计算的
+      经过分析知道，theta低十四位在第三象限时与取绝对值后的第一象限一致
+      而第二，第四象限时，则是完全相反，因此第二第四象限需要将1变成0，将0变成1，或者说
+      新的低14位 = 11 1111 1111 1111 - 旧的低14位
+      可以写成异或形式
+     */
+    return xyIsUnderZero ? (Q15_te_t){theta ^ 0x3FFF} : (Q15_te_t){theta};
+}
+
+#endif
+
+
+
+#undef MATH_CALCULATE_LEVEL

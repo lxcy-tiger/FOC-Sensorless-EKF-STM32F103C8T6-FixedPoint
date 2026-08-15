@@ -92,7 +92,7 @@ static void PLL_update(struct FluxObserver_PLL_t *fluxObserver_pll) {
     } else {
         fluxObserver_pll->Espeed_O = Espeed;
     }
-    fluxObserver_pll->Etheta_O = Etheta;
+    fluxObserver_pll->Etheta_O=Etheta;
 }
 
 void FluxObserver_PLL_update(struct FluxObserver_PLL_t *fluxObserver_pll) {

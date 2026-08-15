@@ -6,7 +6,6 @@
 #define FOC_SENSORLESS_FIXED_FIXED_POINT_H
 #include <stdint.h>
 
-#include "cmsis_gcc.h"
 
 static __inline__ __attribute__((__always_inline__)) float my_abs(float input) {
     if (input < 0) return -input;
@@ -33,7 +32,7 @@ static inline float Q15_##base_Name##_GetValue(Q15_##base_Name##_t q15_var) \
 
 static inline int16_t satInt32(int x) {
     if (x > 32767 )return 32767;
-    if (x<-32768)return 32768;
+    if (x<-32768)return -32768;
     return x;
 }
 

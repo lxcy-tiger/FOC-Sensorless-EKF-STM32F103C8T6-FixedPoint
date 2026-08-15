@@ -37,14 +37,13 @@ static float USB_data[USB_MaxDataRecordLength+1000];//长度为USB_MaxDataRecord
 unsigned char tail[4]={0x00,0x00,0x80,0x7f};
 //记录电机运行和系统状态，用于发送给上位机
 void recordRunningData() {
-    extern volatile uint32_t tim1_cnt;
+    USB_data[USB_DataRecordIndex++]=Id_PIstate.Set.child_value;
+    USB_data[USB_DataRecordIndex++]=Id_PIstate.Measure.child_value;
+    USB_data[USB_DataRecordIndex++]=Iq_PIstate.Set.child_value;
+    USB_data[USB_DataRecordIndex++]=Iq_PIstate.Measure.child_value;
     USB_data[USB_DataRecordIndex++]=Speed_PIstate.Set.child_value;
     USB_data[USB_DataRecordIndex++]=Speed_PIstate.Measure.child_value;
-    USB_data[USB_DataRecordIndex++]=Speed_PIstate.P_Output_Part.child_value;
-    USB_data[USB_DataRecordIndex++]=Speed_PIstate.I_Output_Part.child_value;
-    USB_data[USB_DataRecordIndex++]=Speed_PIstate.I_Output_SinglePart.child_value;
     USB_data[USB_DataRecordIndex++]=fluxObserver_pll_est.Flux_alpha_O.child_value;
-    USB_data[USB_DataRecordIndex++]=fluxObserver_pll_est.Flux_beta_O.child_value;
     USB_data[USB_DataRecordIndex++]=fluxObserver_pll_est.Etheta_O.child_value;
     USB_data[USB_DataRecordIndex++]=*((float*)&tail[0]);
     if (USB_DataRecordIndex==USB_HalfDataLength) {
