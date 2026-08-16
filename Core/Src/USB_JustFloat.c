@@ -28,22 +28,29 @@
     值得注意的是，上述测试只是比较粗略的测试，实际可能需要反复多次测试得到平均值才更准确，但结论大体不变
 */
 
-#define singleDataLength 9 //单次记录需要的数据长度,注意这里要算上帧尾(以float为单位)
+#define singleDataLength 12 //单次记录需要的数据长度,注意这里要算上帧尾(以float为单位),15khz的中断,发送数据长度可以提升到12
 #define USB_HalfDataCount 100//填充数据的一半数量
 #define USB_HalfDataLength (singleDataLength*USB_HalfDataCount)//填充数据的一半长度
 #define USB_MaxDataRecordLength (USB_HalfDataLength*2)//当数据每被填满一半，就发送一次数据
 static uint32_t USB_DataRecordIndex=0;//表示已经记录数据的下标
-static float USB_data[USB_MaxDataRecordLength+1000];//长度为USB_MaxDataRecordLength+1000，留有一定裕量，防止超过数组下标(理论上不会超过)
+static float USB_data[USB_MaxDataRecordLength+100];//长度为USB_MaxDataRecordLength+100，留有一定裕量，防止超过数组下标(理论上不会超过)
 unsigned char tail[4]={0x00,0x00,0x80,0x7f};
 //记录电机运行和系统状态，用于发送给上位机
 void recordRunningData() {
     USB_data[USB_DataRecordIndex++]=Id_PIstate.Set.child_value;
     USB_data[USB_DataRecordIndex++]=Id_PIstate.Measure.child_value;
+    /*
+        注意：IF启动时，Iq_PIstate.Set这一项理论上是线性上升的，实际上由于可能是USB刚开启发送的时候有些丢包
+        所以这一项在启动时在VOFA会看到一个突跳，应该是USB发送数据包的问题而不是软件逻辑问题
+     */
     USB_data[USB_DataRecordIndex++]=Iq_PIstate.Set.child_value;
     USB_data[USB_DataRecordIndex++]=Iq_PIstate.Measure.child_value;
     USB_data[USB_DataRecordIndex++]=Speed_PIstate.Set.child_value;
     USB_data[USB_DataRecordIndex++]=Speed_PIstate.Measure.child_value;
+    USB_data[USB_DataRecordIndex++]=ClarkePark.ipark.Valpha_O.child_value;
+    USB_data[USB_DataRecordIndex++]=ClarkePark.ipark.Vbeta_O.child_value;
     USB_data[USB_DataRecordIndex++]=fluxObserver_pll_est.Flux_alpha_O.child_value;
+    USB_data[USB_DataRecordIndex++]=fluxObserver_pll_est.Flux_beta_O.child_value;
     USB_data[USB_DataRecordIndex++]=fluxObserver_pll_est.Etheta_O.child_value;
     USB_data[USB_DataRecordIndex++]=*((float*)&tail[0]);
     if (USB_DataRecordIndex==USB_HalfDataLength) {

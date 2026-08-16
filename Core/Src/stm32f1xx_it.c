@@ -62,6 +62,19 @@
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/*
+ *  IF强拖切闭环步骤
+ *  数字0:IF强拖步骤,速度不停增加(IdIq电流环开启,转速环开启,观测器开启,角度:由IF给定)
+ *        数字0->数字1:单周期坐标变换，瞬间切换
+ *  数字1:IF强拖结束并闭环转速环和观测器,减小Id给定进行收尾(IdIq电流环开启,转速环开启,观测器开启,角度:由观测器给定)
+*/
+uint8_t IF_Start_Step=0;
+Q15_I_t IF_IqCurrent={0.0f};//IF强拖电流实际值(Iq给定值以每秒IF_IqCurrentAcceleration的速度增加,慢慢上升直到IF_IqCurrentTarget)
+Q15_te_t IF_ETheta={0.0f};//IF角度
+Q15_we_t IF_ESpeed={0.0f};//IF速度
+Q15_te_t OB_ETheta={0.0f};//观测器角度
+Q15_we_t OB_ESpeed={0.0f};//观测器速度
+
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -262,8 +275,46 @@ void ADC1_2_IRQHandler(void)
   fluxObserver_pll_est.Valpha_I=Valpha_last;
   fluxObserver_pll_est.Vbeta_I=Vbeta_last;
   FluxObserver_PLL_update(&fluxObserver_pll_est);
-  Espeed=fluxObserver_pll_est.Espeed_O;
-  Etheta=fluxObserver_pll_est.Etheta_O;
+  OB_ESpeed=fluxObserver_pll_est.Espeed_O;
+  OB_ETheta=fluxObserver_pll_est.Etheta_O;
+
+  if (IF_Start_Step==0) {
+    IF_ESpeed=Q15_C2C(Q15_add(_P(IF_ESpeed),Q15_mul(_P(IF_Acceleration),_P(T_s))),we);
+    IF_ETheta=Q15_C2C(Q15_add(_P(IF_ETheta),Q15_mul(_P(IF_ESpeed),Q15_gain(_P(T_s), 2.f))), te);
+    Espeed=IF_ESpeed;
+    Etheta=IF_ETheta;
+    if (IF_ESpeed.child_value>=IF_Target_Speed.child_value) {
+      //强拖过渡阶段，进行两次坐标变换切换闭环
+      IF_Start_Step=1;
+      ClarkePark.park.Ialpha_I=Id_PIstate.Set;
+      ClarkePark.park.Ibeta_I=Iq_PIstate.Set;
+      ClarkePark.park.Theta_I=Q15_C2C(Q15_sub(_P(OB_ETheta),_P(IF_ETheta)),te);
+      Park_transform(&ClarkePark.park);
+      Id_PIstate.Set=ClarkePark.park.Id_O;
+      Iq_PIstate.Set=ClarkePark.park.Iq_O;
+
+      ClarkePark.park.Ialpha_I=Q15_C2C(_P(Id_PIstate.Output),I);
+      ClarkePark.park.Ibeta_I=Q15_C2C(_P(Iq_PIstate.Output),I);
+      Park_transform(&ClarkePark.park);
+      Id_PIstate.Output=Q15_C2C(_P(ClarkePark.park.Id_O),U);
+      Iq_PIstate.Output=Q15_C2C(_P(ClarkePark.park.Iq_O),U);
+
+      Id_PIstate.I_Output_Part=((int64_t)(Id_PIstate.Output.child_value))<<(15+Id_PIstate.I_RightMove);
+      Iq_PIstate.I_Output_Part=((int64_t)(Iq_PIstate.Output.child_value))<<(15+Iq_PIstate.I_RightMove);
+
+      Speed_PIstate.Measure=IF_ESpeed;
+      Speed_PI_update(&Speed_PIstate);
+      Speed_PIstate.Output=Iq_PIstate.Set;
+      Speed_PIstate.I_Output_Part=((int64_t)(Speed_PIstate.Output.child_value-Speed_PIstate.P_Output_Part.child_value))<<(15+Speed_PIstate.I_RightMove);
+
+      Etheta=OB_ETheta;
+    }
+  }
+  else {
+    Espeed=OB_ESpeed;
+    Etheta=OB_ETheta;
+  }
+
   /*
   * 执行一次转速环，获取Q电流环给定(转速环频率已降低为1khz)
   */
@@ -285,9 +336,17 @@ void ADC1_2_IRQHandler(void)
   /*
    * 执行一次dq电流环，获取Udq电压给定
    */
+  if (Id_PIstate.Set.child_value>0)Id_PIstate.Set.child_value-=Q15_FromValue(0.0001f,I).child_value;
+  else Id_PIstate.Set=Q15_FromValue(0.f,I);
   Id_PIstate.Measure=ClarkePark.park.Id_O;
   Id_PI_update(&Id_PIstate);
-  Iq_PIstate.Set=Speed_PIstate.Output;
+  if (IF_Start_Step==0) {
+    if (IF_IqCurrent.child_value<IF_IqCurrentTarget.child_value)IF_IqCurrent=Q15_C2C(Q15_add(_P(IF_IqCurrent),Q15_mul(_P(IF_IqCurrentAcceleration),_P(T_s))),I);
+    Iq_PIstate.Set=IF_IqCurrent;
+  }
+  else {
+    Iq_PIstate.Set=Speed_PIstate.Output;
+  }
   Iq_PIstate.Measure=ClarkePark.park.Iq_O;
   Iq_PI_update(&Iq_PIstate);
    /*

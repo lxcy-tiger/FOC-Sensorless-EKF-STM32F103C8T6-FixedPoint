@@ -26,6 +26,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "usbd_cdc_if.h"
 #include "PMSM_Control_Core/FluxObserver_PLL.h"
 #include "PMSM_Control_Core/Hardware.h"
 #include "PMSM_Control_Core/PI_Controller.h"
@@ -99,6 +100,10 @@ int main(void)
   MX_TIM1_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
+
+  //如果想看IF启动的波形，可以加个10秒延时，这样子来得及插上USB口，打开VOFA的开关接收信息
+  //HAL_Delay(10000);
+
   FluxObserver_init();
   //ADC单端输入校准
   __HAL_RCC_ADC1_CLK_ENABLE();
@@ -118,15 +123,15 @@ int main(void)
   //设定一个输出为0矢量的占空比
   TIM1_Set_PWMCompare(1200,1200,1200);
 
-  // 启动ADC注入通道
-  HAL_ADCEx_InjectedStart_IT(&hadc1);
 
   // EN引脚使能
   HAL_GPIO_WritePin(EN1_GPIO_Port,EN1_Pin,GPIO_PIN_SET);
   HAL_GPIO_WritePin(EN2_GPIO_Port,EN2_Pin,GPIO_PIN_SET);
   HAL_GPIO_WritePin(EN3_GPIO_Port,EN3_Pin,GPIO_PIN_SET);
   //给定初始电转速1000rad/s
-  Speed_PIstate.Set=Q15_FromValue(500,we);
+  Speed_PIstate.Set=Q15_FromValue(1000,we);
+  // 启动ADC注入通道
+  HAL_ADCEx_InjectedStart_IT(&hadc1);
   /* USER CODE END 2 */
 
   /* Infinite loop */

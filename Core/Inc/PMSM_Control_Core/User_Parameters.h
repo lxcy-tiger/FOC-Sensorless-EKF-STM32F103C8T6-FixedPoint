@@ -21,7 +21,8 @@ Q15_baseValue(flux,U_q15base.base_value/we_q15base.base_value);//磁链基值(V�
 Q15_baseValue(T,2*M_PI/we_q15base.base_value);//时间基值(s)，由量纲分析，取2PI除以角速度基值
 Q15_baseValue(te,M_PI);//电角度基值(rad/2),范围是-PI~PI,将映射到-32768~32767,注意这里不用2*M_PI,以保证精度以及自动溢出钳位功能,但是缺点是需要手动转换单位
 Q15_baseValue(lambda,U_q15base.base_value/flux_q15base.base_value/flux_q15base.base_value/flux_q15base.base_value)//lambda基值(由量纲分析得到V/(rad/s)^3，因此应该取Ubase/fluxbase^3),专用于改进的非线性磁链观测器。
-
+Q15_baseValue(It, I_q15base.base_value/T_q15base.base_value); //电流增加速度(A/s)，专用于IF启动
+Q15_baseValue(a,we_q15base.base_value/T_q15base.base_value);//角加速度(rad/s^2)，专用于IF启动
 
 static const Q15_Z_t Rs=Q15_FromValue(5.5f/2,Z); //电阻(Ohm)
 static const Q15_L_t Ls= Q15_FromValue(2.e-3f/2,L); //电感(H)
@@ -38,5 +39,9 @@ static const float Speed_MaxOutput=I_max;//转速环最大输出值(A)
 static const float FluxPLL_wc=80;//磁链观测器锁相环截止频率(rad/s)
 static const float FluxPLL_MaxOutput=we_max;//磁链观测器锁相环输出最大值(rad/s)
 
+static const Q15_I_t IF_IqCurrentTarget=Q15_FromValue(0.6f,I);//IF强拖电流最终给定(给定Iq电流环最终值,单位A)
+static const Q15_It_t IF_IqCurrentAcceleration=Q15_FromValue(5.f,It);//IF强拖电流增加速度(A/s),这个值不能太小,因为太小,定点值计算时会变成0(精度不够)
+static const Q15_a_t IF_Acceleration=Q15_FromValue(1000.f,a);//IF加速度(表示强拖速度增加的速度，单位rad/s^2),这个值不能太小,因为太小,定点值计算时会变成0(精度不够)
+static const Q15_we_t IF_Target_Speed=Q15_FromValue(500.f,we);//IF目标速度(表示结束强拖时应该达到的速度,即IF_Start_Step何时变为1的阈值,单位rad/s)
 
 #endif //FOC_SENSORLESS_FIXED_USER_PARAMETERS_H
